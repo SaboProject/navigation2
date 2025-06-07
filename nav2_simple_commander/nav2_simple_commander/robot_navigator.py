@@ -66,6 +66,7 @@ class BasicNavigator(Node):
                                                      NavigateThroughPoses,
                                                      'navigate_through_poses')
         self.nav_to_pose_client = ActionClient(self, NavigateToPose, 'navigate_to_pose')
+        self.follow_point_client = ActionClient(self, NavigateToPose, 'follow_point')
         self.follow_waypoints_client = ActionClient(self, FollowWaypoints, 'follow_waypoints')
         self.follow_path_client = ActionClient(self, FollowPath, 'follow_path')
         self.compute_path_to_pose_client = ActionClient(self, ComputePathToPose,
@@ -97,6 +98,7 @@ class BasicNavigator(Node):
     def destroy_node(self):
         self.nav_through_poses_client.destroy()
         self.nav_to_pose_client.destroy()
+        self.follow_point_client.destroy()
         self.follow_waypoints_client.destroy()
         self.follow_path_client.destroy()
         self.compute_path_to_pose_client.destroy()
@@ -148,6 +150,31 @@ class BasicNavigator(Node):
         self.info('Navigating to goal: ' + str(pose.pose.position.x) + ' ' +
                   str(pose.pose.position.y) + '...')
         send_goal_future = self.nav_to_pose_client.send_goal_async(goal_msg,
+                                                                   self._feedbackCallback)
+        rclpy.spin_until_future_complete(self, send_goal_future)
+        self.goal_handle = send_goal_future.result()
+
+        if not self.goal_handle.accepted:
+            self.error('Goal to ' + str(pose.pose.position.x) + ' ' +
+                       str(pose.pose.position.y) + ' was rejected!')
+            return False
+
+        self.result_future = self.goal_handle.get_result_async()
+        return True
+    
+    def GetCloseToPose(self, pose, behavior_tree=''):
+        """Send a `FollowPoint` action request."""
+        self.debug("Waiting for 'FollowPoint' action server")
+        while not self.follow_point_client.wait_for_server(timeout_sec=1.0):
+            self.info("'FollowPoint' action server not available, waiting...")
+
+        goal_msg = NavigateToPose.Goal()
+        goal_msg.pose = pose
+        goal_msg.behavior_tree = behavior_tree
+
+        self.info('Get close to goal: ' + str(pose.pose.position.x) + ' ' +
+                  str(pose.pose.position.y) + '...')
+        send_goal_future = self.follow_point_client.send_goal_async(goal_msg,
                                                                    self._feedbackCallback)
         rclpy.spin_until_future_complete(self, send_goal_future)
         self.goal_handle = send_goal_future.result()
